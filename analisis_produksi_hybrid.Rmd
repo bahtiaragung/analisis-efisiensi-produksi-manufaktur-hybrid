@@ -1,0 +1,184 @@
+---
+title: "Analisis Efisiensi Produksi di Sistem Manufaktur Hybrid"
+author: "Agung Bahtiar"
+date: "2025-07-19"
+output: html_document
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+library(dplyr) #Untuk manipulasi data
+library(ggplot2) # visualisasi grafik
+library(lubridate) # manipulasi tanggal/waktu
+library(readr) # menambah file (csv, dll)
+library(tidyr) # transformasi data (reshape, pivot)
+library(skimr) # ringkasan statistik data
+library(DT) # membuat tabel interaktif
+library(caret) # pemodelan machine learning
+library(randomForest) #pemodelan random Forest
+```
+
+
+# Pendahuluan
+Dokumen ini berisi analisis data dari sistem manufaktur hybrid yang menggabungkan proses *additive* dan *subtractive manufacturing*. Tujuannya adalah untuk mengevaluasi efisiensi proses produksi dan memberikan insight yang berguna untuk perencanaan di masa depan.
+
+# 1. Memuat Dataset
+
+```{r load-data}
+data <- read_csv("hybrid_manufacturing_categorical.csv")
+
+#Menampilkan 6 baris awal data
+datatable(head(data))
+
+```
+
+# 2. Eksplorasi Awal
+
+```{r eksplorasi-awal}
+# Melihat struktur data
+str(data)
+
+# Ringkasan Statistik
+skim(data)
+
+```
+
+
+# 3. Pembersihan Data
+
+```{r cleaning}
+# Mengecek missing value 
+colSums(is.na(data))
+
+# Mengubah kolom waktu menjadi tipe waktu
+col_time <- c("Scheduled_Start", "Scheduled_End", "Actual_Start", "Actual_End")
+data[col_time] <- lapply(data[col_time], ymd_hms)
+
+# Menambahkan kolom durasi aktual dan keterlambatan
+data <- data %>%
+  mutate(
+    Actual_Duration = as.numeric(difftime(Actual_End, Actual_Start, units = "mins")),
+    Scheduled_Duration = as.numeric(difftime(Scheduled_End, Scheduled_Start, units = "mins")),
+    Delay_Minutes = as.numeric(difftime(Actual_Start, Scheduled_Start, units = "mins"))
+  )
+
+```
+# 4. Analisis Deskriptif
+
+## a. Distribusi Status Pekerjaan 
+```{r status-job}
+data %>% count(Job_Status) %>%
+  ggplot(aes(x = Job_Status, y = n, fill = Job_Status)) +
+  geom_col() +
+  labs(title = "Distribusi Status Job", x = "Status", y = "Jumlah") +
+  theme_minimal()
+```
+
+
+## b. Rata-rata Konsumsi Energi dan Waktu Proses per Operasi
+```{r energy-operation}
+data %>% 
+  group_by(Operation_Type) %>%
+  summarise(
+    Rata_Energi = mean(Energy_Consumption, na.rm = TRUE),
+    Rata_Durasi = mean(Processing_Time, na.rm = TRUE)
+  ) %>%
+  ggplot(aes(x = Operation_Type, y = Rata_Energi, fill = Operation_Type)) +
+  geom_col() +
+  labs(title = "Rata-rata Konsumsi Energi Tiap Operasi", y = "Energi (kWh)") +
+  theme_minimal()
+```
+
+# 5. Analisis Keterlambatan
+
+```{r delay-analysis}
+data %>% 
+  filter(!is.na(Delay_Minutes)) %>%
+  ggplot(aes(x = Delay_Minutes)) +
+  geom_histogram(binwidth = 10, fill = "steelblue", color = "white") +
+  labs(title = "Distribusi Keterlambatan (menit)", x = "Menit", y = "Jumlah Job") +
+  theme_minimal()
+```
+
+# 6. Prediksi Kategori Efisiensi Produksi
+
+## a. Menyiapkan Data untuk Prediksi
+```{r prepare-model-data}
+# Hapus baris yang memiliki NA dan pastikan semua fitur numerik
+model_data <- data %>% 
+  select(Energy_Consumption, Processing_Time, Material_Used, Machine_ID, Actual_Duration, Delay_Minutes, Optimization_Category) %>%
+  drop_na()
+
+# Pastikan target berupa faktor
+model_data$Optimization_Category <- as.factor(model_data$Optimization_Category)
+model_data$Machine_ID <- as.factor(model_data$Machine_ID)
+
+
+head(model_data)
+
+```
+
+## b. Membagi Data (Training dan Testing)
+```{r split-data}
+set.seed(123)
+splitIndex <- createDataPartition(model_data$Optimization_Category, p = 0.7, list = FALSE)
+train_data <- model_data[splitIndex, ]
+test_data <- model_data[-splitIndex, ]
+```
+
+## c. Membuat Model Random Forest
+```{r model-training}
+model_rf <- randomForest(Optimization_Category ~ ., data = train_data, ntree = 100, importance = TRUE)
+model_rf
+```
+
+## d. Evaluasi Model
+```{r model-evaluation}
+prediksi <- predict(model_rf, newdata = test_data)
+confusionMatrix(prediksi, test_data$Optimization_Category)
+```
+
+## e. Visualisasi Pentingnya Fitur
+```{r feature-importance}
+varImpPlot(model_rf, main = "Pentingnya Fitur dalam Prediksi Efisiensi")
+```
+
+
+
+# 6. Kesimpulan Akhir
+
+Dokumen ini telah menyajikan analisis menyeluruh terhadap efisiensi produksi pada sistem manufaktur hybrid, mulai dari eksplorasi data, visualisasi, hingga prediksi menggunakan model machine learning (Random Forest). Berikut adalah ringkasan temuan utama:
+
+## 🔍 Analisis Deskriptif
+
+- Mayoritas job memiliki status *Completed*, namun terdapat pula job yang *Delayed* dan *Failed*, yang perlu diperhatikan dalam perencanaan ke depan.
+- Operasi *Additive* cenderung memiliki waktu proses lebih singkat, namun konsumsi energinya belum tentu paling efisien.
+- Distribusi keterlambatan (*Delay Minutes*) menunjukkan bahwa keterlambatan adalah isu yang nyata dan dapat diukur.
+
+## 🤖 Prediksi Efisiensi Produksi
+
+- Model Random Forest berhasil mengklasifikasikan efisiensi produksi ke dalam 4 kategori dengan **akurasi sebesar 95.3%** dan nilai **Kappa 0.9163**, yang menunjukkan model sangat baik.
+- Kategori *Low* dan *Moderate Efficiency* terklasifikasi dengan sangat baik, sedangkan *Optimal Efficiency* kurang terdeteksi karena data tidak seimbang.
+- Model ini memberikan potensi besar untuk diterapkan dalam sistem produksi sebagai alat bantu pengambilan keputusan otomatis.
+
+## 📊 Pentingnya Fitur dalam Prediksi
+
+Visualisasi `varImpPlot` dari model Random Forest menunjukkan fitur paling berpengaruh dalam prediksi efisiensi adalah:
+
+1. **Delay_Minutes** – keterlambatan berdampak signifikan terhadap penurunan efisiensi.
+2. **Energy_Consumption** – konsumsi energi tinggi sering berkaitan dengan efisiensi rendah.
+3. **Processing_Time dan Actual_Duration** – juga memiliki peran penting.
+
+Sementara fitur seperti `Machine_ID` relatif tidak berkontribusi banyak dalam prediksi.
+
+## ✅ Rangkuman
+
+- **Keterlambatan, durasi proses, dan konsumsi energi** merupakan faktor kunci penentu efisiensi.
+- Dengan akurasi tinggi, **model Random Forest** terbukti efektif untuk klasifikasi efisiensi.
+- Dataset perlu diperkaya terutama untuk kategori *Optimal Efficiency* agar model lebih seimbang.
+- Proyek ini bisa dikembangkan lebih lanjut dengan model lain (seperti XGBoost) atau fitur tambahan untuk akurasi yang lebih tinggi.
+
+---
+
+Analisis ini memberikan dasar kuat bagi manajemen manufaktur dalam merencanakan, mengevaluasi, dan mengoptimalkan proses produksi secara lebih akurat dan data-driven.
+
+
