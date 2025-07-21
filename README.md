@@ -24,15 +24,14 @@ Proyek ini merupakan analisis sistem manufaktur hybrid yang menggabungkan proses
 
 ## 🔗 Sumber Dataset
 
-Dataset tersedia di Kaggle:  
-📎 https://www.kaggle.com/datasets/ziya07/manufacturing-production-data
+
+📎 [Link Datase](https://www.kaggle.com/datasets/ziya07/manufacturing-production-data)
 
 ---
 
 ## 🔗 Notebook Kaggle
 
-📎 (Tambahkan link setelah kamu upload ke Kaggle)  
-https://www.kaggle.com/code/agungbahtiar/analisis-efisiensi-produksi-di-sistem-hybrid
+📎 [Link Kaggle](https://www.kaggle.com/code/agungbahtiar/analisis-efisiensi-produksi-di-sistem-hybrid)
 
 ---
 
